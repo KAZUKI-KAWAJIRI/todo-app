@@ -1,14 +1,18 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import TodoForm from '@/components/TodoForm';
-import TodoList from '@/components/TodoList';
-import { Todo } from '@/types';
+import Todo from '@/components/Todo';
+import Sidebar from '@/components/Sidebar';
+import { Todo as TodoType } from '@/types';
 
-export default function Home() {
-  const [todos, setTodos] = useState<Todo[]>([]);
+/**
+ * TodoデータをローカルストレージとStateで管理するカスタムフック
+ * @returns {[TodoType[], function]} TodosのStateとセッター関数
+ */
+function useTodoStorage() {
+  const [todos, setTodos] = useState<TodoType[]>([]);
 
-  // ローカルストレージからTODOを読み込む
+  // 初回ロード時にローカルストレージからデータを読み込む
   useEffect(() => {
     const savedTodos = localStorage.getItem('todos');
     if (savedTodos) {
@@ -16,7 +20,8 @@ export default function Home() {
         const parsedTodos = JSON.parse(savedTodos);
         setTodos(parsedTodos.map((todo: any) => ({
           ...todo,
-          createdAt: new Date(todo.createdAt)
+          createdAt: new Date(todo.createdAt),
+          ...(todo.dueDate && { dueDate: new Date(todo.dueDate) })
         })));
       } catch (error) {
         console.error('TODOの読み込みに失敗しました:', error);
@@ -24,32 +29,76 @@ export default function Home() {
     }
   }, []);
 
-  // TODOが変更されたらローカルストレージに保存
+  // todosが変更されたらローカルストレージに保存
   useEffect(() => {
     localStorage.setItem('todos', JSON.stringify(todos));
   }, [todos]);
 
-  const addTodo = (todo: Todo) => {
-    setTodos([...todos, todo]);
-  };
+  return [todos, setTodos] as const;
+}
 
-  const toggleTodo = (id: string) => {
-    setTodos(
-      todos.map((todo) =>
-        todo.id === id ? { ...todo, completed: !todo.completed } : todo
-      )
-    );
-  };
+/**
+ * アプリケーションヘッダー
+ */
+function AppHeader() {
+  return (
+    <header className="text-center mb-6 fade-in">
+      <h1 className="text-3xl md:text-4xl font-bold mb-2 text-blue-600 dark:text-blue-400">
+        TODOアプリ
+      </h1>
+      <p className="text-gray-600 dark:text-gray-400 max-w-md mx-auto">
+        タスクを効率的に管理し、期限や優先度を設定して生産性を向上させましょう。
+      </p>
+    </header>
+  );
+}
 
-  const deleteTodo = (id: string) => {
-    setTodos(todos.filter((todo) => todo.id !== id));
+/**
+ * メインコンテンツ
+ */
+export default function Home() {
+  const [todos, setTodos] = useTodoStorage();
+
+  /**
+   * インポートされたTODOデータの処理
+   * @param importedTodos インポートされたTodoデータ
+   */
+  const handleImport = (importedTodos: TodoType[]) => {
+    if (window.confirm('現在のタスクを全て置き換えますか？キャンセルを選択すると、インポートしたタスクが追加されます。')) {
+      setTodos(importedTodos);
+    } else {
+      // 既存のタスクとマージ（IDが重複する場合はインポートしたタスクで上書き）
+      const existingIds = new Set(todos.map(todo => todo.id));
+      const newTodos = [...todos];
+      
+      for (const importedTodo of importedTodos) {
+        if (existingIds.has(importedTodo.id)) {
+          const index = newTodos.findIndex(todo => todo.id === importedTodo.id);
+          newTodos[index] = importedTodo;
+        } else {
+          newTodos.push(importedTodo);
+        }
+      }
+      
+      setTodos(newTodos);
+    }
   };
 
   return (
-    <main className="container mx-auto max-w-md p-4">
-      <h1 className="text-2xl font-bold text-center mb-6">TODOアプリ</h1>
-      <TodoForm addTodo={addTodo} />
-      <TodoList todos={todos} toggleTodo={toggleTodo} deleteTodo={deleteTodo} />
+    <main className="min-h-screen py-4 px-4 sm:px-6">
+      <AppHeader />
+      
+      <div className="flex flex-col md:flex-row gap-6 max-w-7xl mx-auto">
+        {/* サイドバー */}
+        <aside className="md:w-1/4 mb-6 md:mb-0 fade-in" style={{ animationDelay: '0.1s' }}>
+          <Sidebar todos={todos} onImport={handleImport} />
+        </aside>
+        
+        {/* メインコンテンツ */}
+        <div className="md:w-3/4 fade-in" style={{ animationDelay: '0.2s' }}>
+          <Todo todos={todos} setTodos={setTodos} />
+        </div>
+      </div>
     </main>
   );
 }
